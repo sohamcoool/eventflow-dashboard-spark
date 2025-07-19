@@ -6,6 +6,7 @@ interface Event {
   title: string;
   description: string;
   date: string;
+  expiryDate: string;
   location: string;
   maxAttendees: number;
   image?: string;
@@ -28,6 +29,7 @@ const EventForm: React.FC<EventFormProps> = ({
     title: event?.title || '',
     description: event?.description || '',
     date: event?.date || '',
+    expiryDate: event?.expiryDate || '',
     location: event?.location || '',
     maxAttendees: event?.maxAttendees || 50,
     image: event?.image || '',
@@ -48,8 +50,14 @@ const EventForm: React.FC<EventFormProps> = ({
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.description.trim()) newErrors.description = 'Description is required';
     if (!formData.date) newErrors.date = 'Date is required';
+    if (!formData.expiryDate) newErrors.expiryDate = 'Expiry date is required';
     if (!formData.location.trim()) newErrors.location = 'Location is required';
     if (formData.maxAttendees < 1) newErrors.maxAttendees = 'Must allow at least 1 attendee';
+    
+    // Validate that expiry date is after event date
+    if (formData.date && formData.expiryDate && new Date(formData.expiryDate) <= new Date(formData.date)) {
+      newErrors.expiryDate = 'Expiry date must be after event date';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -152,24 +160,43 @@ const EventForm: React.FC<EventFormProps> = ({
             </div>
           </div>
 
-          {/* Max Attendees */}
-          <div className="input-floating">
-            <input
-              type="number"
-              id="maxAttendees"
-              min="1"
-              value={formData.maxAttendees}
-              onChange={(e) => handleInputChange('maxAttendees', parseInt(e.target.value) || 0)}
-              placeholder=" "
-              className={errors.maxAttendees ? 'border-destructive' : ''}
-            />
-            <label htmlFor="maxAttendees" className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Maximum Attendees
-            </label>
-            {errors.maxAttendees && (
-              <p className="text-destructive text-sm mt-1 animate-slide-down">{errors.maxAttendees}</p>
-            )}
+          {/* Expiry Date and Max Attendees Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="input-floating">
+              <input
+                type="datetime-local"
+                id="expiryDate"
+                value={formData.expiryDate}
+                onChange={(e) => handleInputChange('expiryDate', e.target.value)}
+                className={errors.expiryDate ? 'border-destructive' : ''}
+              />
+              <label htmlFor="expiryDate" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                Event Expiry Date
+              </label>
+              {errors.expiryDate && (
+                <p className="text-destructive text-sm mt-1 animate-slide-down">{errors.expiryDate}</p>
+              )}
+            </div>
+
+            <div className="input-floating">
+              <input
+                type="number"
+                id="maxAttendees"
+                min="1"
+                value={formData.maxAttendees}
+                onChange={(e) => handleInputChange('maxAttendees', parseInt(e.target.value) || 0)}
+                placeholder=" "
+                className={errors.maxAttendees ? 'border-destructive' : ''}
+              />
+              <label htmlFor="maxAttendees" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Maximum Attendees
+              </label>
+              {errors.maxAttendees && (
+                <p className="text-destructive text-sm mt-1 animate-slide-down">{errors.maxAttendees}</p>
+              )}
+            </div>
           </div>
 
           {/* Image Upload */}

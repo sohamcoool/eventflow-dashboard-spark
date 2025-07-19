@@ -1,15 +1,16 @@
 import React from 'react';
-import { Calendar, MapPin, Users, Edit, Trash2, Eye } from 'lucide-react';
+import { Calendar, MapPin, Users, Edit, Trash2, Eye, AlertTriangle, Clock } from 'lucide-react';
 
 interface Event {
   id: string;
   title: string;
   description: string;
   date: string;
+  expiryDate: string;
   location: string;
   attendees: number;
   maxAttendees: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
   image?: string;
 }
 
@@ -27,8 +28,25 @@ const getStatusColor = (status: string) => {
       return 'text-success bg-success/10 border-success/20';
     case 'rejected':
       return 'text-destructive bg-destructive/10 border-destructive/20';
+    case 'expired':
+      return 'text-muted-foreground bg-muted/20 border-muted/40';
     default:
       return 'text-warning bg-warning/10 border-warning/20';
+  }
+};
+
+const getExpiryStatus = (expiryDate: string) => {
+  const now = new Date();
+  const expiry = new Date(expiryDate);
+  const diffTime = expiry.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { status: 'expired', message: 'Expired', color: 'text-destructive', icon: AlertTriangle };
+  } else if (diffDays <= 7) {
+    return { status: 'expiring', message: `${diffDays} days left`, color: 'text-warning', icon: Clock };
+  } else {
+    return { status: 'active', message: `${diffDays} days left`, color: 'text-muted-foreground', icon: Clock };
   }
 };
 
@@ -97,6 +115,22 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="flex items-center text-sm text-muted-foreground">
             <Users className="w-4 h-4 mr-2 text-primary" />
             {event.attendees} / {event.maxAttendees} attendees
+          </div>
+
+          {/* Expiry Status */}
+          <div className="flex items-center text-sm">
+            {(() => {
+              const expiryInfo = getExpiryStatus(event.expiryDate);
+              const ExpiryIcon = expiryInfo.icon;
+              return (
+                <div className={`flex items-center ${expiryInfo.color}`}>
+                  <ExpiryIcon className="w-4 h-4 mr-2" />
+                  <span className={expiryInfo.status === 'expiring' ? 'animate-pulse font-medium' : ''}>
+                    {expiryInfo.message}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

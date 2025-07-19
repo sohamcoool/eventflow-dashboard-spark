@@ -6,10 +6,11 @@ interface Event {
   title: string;
   description: string;
   date: string;
+  expiryDate: string;
   location: string;
   attendees: number;
   maxAttendees: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
 }
 
 interface EventsTableProps {
@@ -25,8 +26,25 @@ const getStatusColor = (status: string) => {
       return 'text-success bg-success/10 border-success/20';
     case 'rejected':
       return 'text-destructive bg-destructive/10 border-destructive/20';
+    case 'expired':
+      return 'text-muted-foreground bg-muted/20 border-muted/40';
     default:
       return 'text-warning bg-warning/10 border-warning/20';
+  }
+};
+
+const getExpiryStatus = (expiryDate: string) => {
+  const now = new Date();
+  const expiry = new Date(expiryDate);
+  const diffTime = expiry.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { status: 'expired', message: 'Expired', color: 'text-destructive' };
+  } else if (diffDays <= 7) {
+    return { status: 'expiring', message: `${diffDays} days left`, color: 'text-warning' };
+  } else {
+    return { status: 'active', message: `${diffDays} days left`, color: 'text-muted-foreground' };
   }
 };
 
@@ -48,6 +66,7 @@ const EventsTable: React.FC<EventsTableProps> = ({ events, onEdit, onDelete, onV
             <tr>
               <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Event</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Date</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Expiry</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Location</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Attendees</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Status</th>
@@ -74,6 +93,16 @@ const EventsTable: React.FC<EventsTableProps> = ({ events, onEdit, onDelete, onV
                   <div className="text-sm text-foreground">
                     {new Date(event.date).toLocaleDateString()}
                   </div>
+                </td>
+                <td className="px-6 py-4">
+                  {(() => {
+                    const expiryInfo = getExpiryStatus(event.expiryDate);
+                    return (
+                      <div className={`text-sm ${expiryInfo.color} ${expiryInfo.status === 'expiring' ? 'animate-pulse font-medium' : ''}`}>
+                        {expiryInfo.message}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-sm text-foreground">{event.location}</div>
@@ -157,6 +186,18 @@ const EventsTable: React.FC<EventsTableProps> = ({ events, onEdit, onDelete, onV
               <div className="flex items-center text-sm text-muted-foreground">
                 <Users className="w-4 h-4 mr-2 text-primary" />
                 {event.attendees}/{event.maxAttendees} attendees
+              </div>
+              {/* Expiry Status for Mobile */}
+              <div className="flex items-center text-sm">
+                {(() => {
+                  const expiryInfo = getExpiryStatus(event.expiryDate);
+                  return (
+                    <div className={`flex items-center ${expiryInfo.color} ${expiryInfo.status === 'expiring' ? 'animate-pulse font-medium' : ''}`}>
+                      <Calendar className="w-4 h-4 mr-2" />
+                      <span>Expires: {expiryInfo.message}</span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

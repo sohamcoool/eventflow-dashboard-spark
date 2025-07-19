@@ -4,16 +4,30 @@ import StatsCard from './StatsCard';
 import EventCard from './EventCard';
 import EventForm from './EventForm';
 import EventsTable from './EventsTable';
+import NotificationCenter from './NotificationCenter';
+import { toast } from '@/hooks/use-toast';
 
 interface Event {
   id: string;
   title: string;
   description: string;
   date: string;
+  expiryDate: string;
   location: string;
   attendees: number;
   maxAttendees: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  image?: string;
+}
+
+interface FormEvent {
+  id?: string;
+  title: string;
+  description: string;
+  date: string;
+  expiryDate: string;
+  location: string;
+  maxAttendees: number;
   image?: string;
 }
 
@@ -22,13 +36,24 @@ interface DashboardContentProps {
   userName: string;
 }
 
-// Sample data
+interface Notification {
+  id: string;
+  type: 'warning' | 'error' | 'info';
+  title: string;
+  message: string;
+  eventId?: string;
+  timestamp: Date;
+  read: boolean;
+}
+
+// Sample data with expiry dates
 const sampleEvents: Event[] = [
   {
     id: '1',
     title: 'Advanced React Masterclass',
     description: 'Deep dive into React hooks, context, and performance optimization techniques for modern web development.',
     date: '2024-02-15T14:00:00',
+    expiryDate: '2024-02-20T23:59:59',
     location: 'Tech Hub Convention Center',
     attendees: 85,
     maxAttendees: 100,
@@ -39,6 +64,7 @@ const sampleEvents: Event[] = [
     title: 'UI/UX Design Workshop',
     description: 'Learn the fundamentals of user experience design and create stunning user interfaces.',
     date: '2024-02-20T10:00:00',
+    expiryDate: '2024-01-25T23:59:59', // This one is expired
     location: 'Creative Arts Studio',
     attendees: 42,
     maxAttendees: 60,
@@ -49,6 +75,7 @@ const sampleEvents: Event[] = [
     title: 'Python for Data Science',
     description: 'Master Python programming for data analysis and machine learning applications.',
     date: '2024-02-25T09:00:00',
+    expiryDate: '2024-01-28T23:59:59', // This one expires soon
     location: 'University Auditorium',
     attendees: 120,
     maxAttendees: 150,
@@ -59,6 +86,7 @@ const sampleEvents: Event[] = [
     title: 'Digital Marketing Bootcamp',
     description: 'Complete guide to modern digital marketing strategies and tools.',
     date: '2024-03-01T13:00:00',
+    expiryDate: '2024-03-10T23:59:59',
     location: 'Business Center Plaza',
     attendees: 0,
     maxAttendees: 80,
@@ -71,24 +99,112 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Check for expired/expiring events and create notifications
+  useEffect(() => {
+    const checkEventExpiry = () => {
+      const now = new Date();
+      const newNotifications: Notification[] = [];
+
+      events.forEach(event => {
+        const expiryDate = new Date(event.expiryDate);
+        const diffTime = expiryDate.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Mark events as expired if expiry date has passed
+        if (diffDays < 0 && event.status !== 'expired') {
+          setEvents(prev => prev.map(e => 
+            e.id === event.id ? { ...e, status: 'expired' as const } : e
+          ));
+          
+          newNotifications.push({
+            id: `expired-${event.id}-${Date.now()}`,
+            type: 'error',
+            title: 'Event Expired',
+            message: `Your event "${event.title}" has expired and is no longer accepting registrations.`,
+            eventId: event.id,
+            timestamp: now,
+            read: false
+          });
+        }
+        // Warn about events expiring in 7 days or less
+        else if (diffDays <= 7 && diffDays > 0) {
+          const existingWarning = notifications.find(n => 
+            n.eventId === event.id && n.type === 'warning' && !n.read
+          );
+          
+          if (!existingWarning) {
+            newNotifications.push({
+              id: `expiring-${event.id}-${Date.now()}`,
+              type: 'warning',
+              title: 'Event Expiring Soon',
+              message: `Your event "${event.title}" will expire in ${diffDays} day${diffDays === 1 ? '' : 's'}.`,
+              eventId: event.id,
+              timestamp: now,
+              read: false
+            });
+          }
+        }
+      });
+
+      if (newNotifications.length > 0) {
+        setNotifications(prev => [...newNotifications, ...prev]);
+        
+        // Show toast notifications for new alerts
+        newNotifications.forEach(notification => {
+          toast({
+            title: notification.title,
+            description: notification.message,
+            variant: notification.type === 'error' ? 'destructive' : 'default',
+          });
+        });
+      }
+    };
+
+    checkEventExpiry();
+    const interval = setInterval(checkEventExpiry, 60000); // Check every minute
+    
+    return () => clearInterval(interval);
+  }, [events, notifications]);
 
   // Calculate stats
   const totalEvents = events.length;
   const approvedEvents = events.filter(e => e.status === 'approved').length;
   const pendingEvents = events.filter(e => e.status === 'pending').length;
+  const expiredEvents = events.filter(e => e.status === 'expired').length;
   const totalAttendees = events.reduce((sum, e) => sum + e.attendees, 0);
 
-  const handleEventSubmit = async (eventData: Event) => {
+  const handleEventSubmit = async (eventData: FormEvent) => {
     setIsLoading(true);
     
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     if (editingEvent) {
-      setEvents(prev => prev.map(e => e.id === editingEvent.id ? { ...eventData, id: editingEvent.id } : e));
+      setEvents(prev => prev.map(e => 
+        e.id === editingEvent.id 
+          ? { ...eventData, id: editingEvent.id, attendees: editingEvent.attendees, status: editingEvent.status }
+          : e
+      ));
+      
+      toast({
+        title: "Event Updated",
+        description: "Your event has been successfully updated.",
+      });
     } else {
-      const newEvent = { ...eventData, id: Date.now().toString(), status: 'pending' as const, attendees: 0 };
+      const newEvent: Event = { 
+        ...eventData, 
+        id: Date.now().toString(), 
+        status: 'pending', 
+        attendees: 0 
+      };
       setEvents(prev => [newEvent, ...prev]);
+      
+      toast({
+        title: "Event Created",
+        description: "Your event has been created and is pending approval.",
+      });
     }
     
     setIsLoading(false);
@@ -103,11 +219,25 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
 
   const handleEventDelete = (eventId: string) => {
     setEvents(prev => prev.filter(e => e.id !== eventId));
+    toast({
+      title: "Event Deleted",
+      description: "The event has been successfully deleted.",
+    });
   };
 
   const handleEventView = (event: Event) => {
     // Implementation for viewing event details
     console.log('Viewing event:', event);
+  };
+
+  const handleNotificationRead = (notificationId: string) => {
+    setNotifications(prev => 
+      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+    );
+  };
+
+  const handleNotificationDismiss = (notificationId: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
   };
 
   const renderWelcomeSection = () => (
@@ -198,13 +328,31 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
     case 'dashboard':
       return (
         <div className="space-y-6">
+          {/* Notification Center */}
+          {notifications.filter(n => !n.read).length > 0 && (
+            <NotificationCenter
+              notifications={notifications.filter(n => !n.read)}
+              onNotificationRead={handleNotificationRead}
+              onNotificationDismiss={handleNotificationDismiss}
+            />
+          )}
+          
           {renderWelcomeSection()}
           {renderStatsSection()}
           {renderRecentEvents()}
           
           {showEventForm && (
             <EventForm
-              event={editingEvent}
+              event={editingEvent ? {
+                id: editingEvent.id,
+                title: editingEvent.title,
+                description: editingEvent.description,
+                date: editingEvent.date,
+                expiryDate: editingEvent.expiryDate,
+                location: editingEvent.location,
+                maxAttendees: editingEvent.maxAttendees,
+                image: editingEvent.image,
+              } : undefined}
               onSubmit={handleEventSubmit}
               onCancel={() => {
                 setShowEventForm(false);
@@ -258,7 +406,16 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
 
           {showEventForm && (
             <EventForm
-              event={editingEvent}
+              event={editingEvent ? {
+                id: editingEvent.id,
+                title: editingEvent.title,
+                description: editingEvent.description,
+                date: editingEvent.date,
+                expiryDate: editingEvent.expiryDate,
+                location: editingEvent.location,
+                maxAttendees: editingEvent.maxAttendees,
+                image: editingEvent.image,
+              } : undefined}
               onSubmit={handleEventSubmit}
               onCancel={() => {
                 setShowEventForm(false);
@@ -279,6 +436,27 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
           </div>
           
           {renderStatsSection()}
+          
+          {/* Add expired events stat */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div className="card-fancy">
+              <h3 className="text-lg font-semibold mb-4 text-destructive">Expired Events</h3>
+              <div className="text-3xl font-bold text-destructive">{expiredEvents}</div>
+              <p className="text-sm text-muted-foreground mt-2">Events that have passed their expiry date</p>
+            </div>
+            <div className="card-fancy">
+              <h3 className="text-lg font-semibold mb-4">Active Notifications</h3>
+              <div className="text-3xl font-bold text-warning">{notifications.filter(n => !n.read).length}</div>
+              <p className="text-sm text-muted-foreground mt-2">Unread notifications</p>
+            </div>
+            <div className="card-fancy">
+              <h3 className="text-lg font-semibold mb-4">Success Rate</h3>
+              <div className="text-3xl font-bold text-success">
+                {totalEvents > 0 ? Math.round((approvedEvents / totalEvents) * 100) : 0}%
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">Event approval rate</p>
+            </div>
+          </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card-fancy">
@@ -337,6 +515,15 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ activeSection, user
     default:
       return (
         <div className="space-y-6">
+          {/* Notification Center */}
+          {notifications.filter(n => !n.read).length > 0 && (
+            <NotificationCenter
+              notifications={notifications.filter(n => !n.read)}
+              onNotificationRead={handleNotificationRead}
+              onNotificationDismiss={handleNotificationDismiss}
+            />
+          )}
+          
           {renderWelcomeSection()}
           {renderStatsSection()}
           {renderRecentEvents()}
